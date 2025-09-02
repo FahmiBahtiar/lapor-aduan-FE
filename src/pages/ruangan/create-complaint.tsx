@@ -6,9 +6,12 @@ import { withAuth } from '@/hooks/useAuth';
 import { apiClient } from '@/lib/api';
 import { ComplaintFormData } from '@/types';
 import { toast } from 'react-hot-toast';
+import CategorySelector from '@/components/forms/CategorySelector';
 
 const CreateComplaint = () => {
   const [loading, setLoading] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [categoryError, setCategoryError] = useState('');
   const router = useRouter();
   
   const {
@@ -18,27 +21,29 @@ const CreateComplaint = () => {
     reset
   } = useForm<ComplaintFormData>();
 
-  const categories = [
-    'AC/Pendingin',
-    'Komputer/IT',
-    'Listrik',
-    'Printer/Scanner',
-    'Plumbing/Air',
-    'Jaringan/Internet',
-    'Peralatan Medis',
-    'Furniture',
-    'Lainnya'
-  ];
-
   const onSubmit = async (data: ComplaintFormData) => {
     try {
       setLoading(true);
       
-      const response = await apiClient.createComplaint(data);
+      // Validate category
+      if (!selectedCategory) {
+        setCategoryError('Kategori wajib dipilih');
+        setLoading(false);
+        return;
+      }
+      
+      const formData = {
+        ...data,
+        category: selectedCategory
+      };
+      
+      const response = await apiClient.createComplaint(formData);
       
       if (response.status === 'success') {
         toast.success('Aduan berhasil dibuat!');
         reset();
+        setSelectedCategory('');
+        setCategoryError('');
         router.push('/ruangan/complaints');
       }
     } catch (error: any) {
@@ -115,28 +120,15 @@ const CreateComplaint = () => {
               </div>
 
               {/* Category */}
-              <div>
-                <label htmlFor="category" className="block text-sm font-medium text-gray-700">
-                  Kategori *
-                </label>
-                <div className="mt-1">
-                  <select
-                    id="category"
-                    {...register('category', { required: 'Kategori wajib dipilih' })}
-                    className="shadow-sm focus:ring-primary-500 focus:border-primary-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                  >
-                    <option value="">Pilih kategori...</option>
-                    {categories.map((category) => (
-                      <option key={category} value={category}>
-                        {category}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.category && (
-                    <p className="mt-2 text-sm text-red-600">{errors.category.message}</p>
-                  )}
-                </div>
-              </div>
+              <CategorySelector
+                value={selectedCategory}
+                onChange={(categoryId) => {
+                  setSelectedCategory(categoryId);
+                  setCategoryError('');
+                }}
+                error={categoryError}
+                required={true}
+              />
 
               {/* Priority */}
               <div>
@@ -170,18 +162,16 @@ const CreateComplaint = () => {
                 <label htmlFor="attachment" className="block text-sm font-medium text-gray-700">
                   Lampiran Foto (Opsional)
                 </label>
-                <div className="mt-1">
-                  <input
-                    type="file"
-                    id="attachment"
-                    accept="image/*"
-                    {...register('attachment')}
-                    className="shadow-sm focus:ring-primary-500 focus:border-primary-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                  />
-                  <p className="mt-2 text-sm text-gray-500">
-                    Format: JPG, PNG, GIF. Maksimal 5MB.
-                  </p>
-                </div>
+                <input
+                  type="file"
+                  id="attachment"
+                  accept="image/*"
+                  {...register('attachment')}
+                  className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+                />
+                <p className="mt-2 text-sm text-gray-500">
+                  Format yang didukung: JPG, PNG, GIF. Maksimal 5MB.
+                </p>
               </div>
 
               {/* Submit Buttons */}

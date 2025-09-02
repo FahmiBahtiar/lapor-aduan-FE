@@ -301,30 +301,83 @@ class ApiClient {
       url: `/admin/users/${id}`,
     });
   }
+
+  // Category endpoints
+  async getCategories(includeInactive?: boolean): Promise<ApiResponse<{ categories: any[], total: number }>> {
+    const params = includeInactive ? '?includeInactive=true' : '';
+    return this.request({
+      method: 'GET',
+      url: `/categories${params}`,
+    });
+  }
+
+  async createCategory(data: { name: string; description?: string }): Promise<ApiResponse<{ category: any }>> {
+    return this.request({
+      method: 'POST',
+      url: '/categories',
+      data,
+    });
+  }
+
+  async updateCategory(id: string, data: { name?: string; description?: string; isActive?: boolean }): Promise<ApiResponse<{ category: any }>> {
+    return this.request({
+      method: 'PUT',
+      url: `/categories/${id}`,
+      data,
+    });
+  }
+
+  async deleteCategory(id: string, force?: boolean): Promise<ApiResponse> {
+    const params = force ? '?force=true' : '';
+    return this.request({
+      method: 'DELETE',
+      url: `/categories/${id}${params}`,
+    });
+  }
+
+  async restoreCategory(id: string): Promise<ApiResponse<{ category: any }>> {
+    return this.request({
+      method: 'POST',
+      url: `/categories/${id}/restore`,
+    });
+  }
+
+  async getCategoryStats(): Promise<ApiResponse<any>> {
+    return this.request({
+      method: 'GET',
+      url: '/categories/stats',
+    });
+  }
 }
 
 // Create singleton instance
-export const apiClient = new ApiClient();
+const apiClient = new ApiClient();
 
-// Export individual methods for easier imports
-export const {
-  login,
-  register,
-  getProfile,
-  updateProfile,
-  createComplaint,
-  getComplaints,
-  getComplaintById,
-  updateComplaint,
-  deleteComplaint,
-  verifyComplaint,
-  processComplaint,
-  finishComplaint,
-  getAllComplaints,
-  getDashboardStats,
-  getAllUsers,
-  getTechnicians,
-  createUser,
-  updateUser,
-  deleteUser,
-} = apiClient;
+// Export methods dengan bind untuk mempertahankan context
+export const login = apiClient.login.bind(apiClient);
+export const register = apiClient.register.bind(apiClient);
+export const getProfile = apiClient.getProfile.bind(apiClient);
+export const updateProfile = apiClient.updateProfile.bind(apiClient);
+export const createComplaint = apiClient.createComplaint.bind(apiClient);
+export const getComplaints = apiClient.getComplaints.bind(apiClient);
+export const getComplaintById = apiClient.getComplaintById.bind(apiClient);
+export const updateComplaint = apiClient.updateComplaint.bind(apiClient);
+export const deleteComplaint = apiClient.deleteComplaint.bind(apiClient);
+export const verifyComplaint = apiClient.verifyComplaint.bind(apiClient);
+export const processComplaint = apiClient.processComplaint.bind(apiClient);
+export const finishComplaint = apiClient.finishComplaint.bind(apiClient);
+export const getAllComplaints = apiClient.getAllComplaints.bind(apiClient);
+export const getDashboardStats = apiClient.getDashboardStats.bind(apiClient);
+export const getAllUsers = apiClient.getAllUsers.bind(apiClient);
+export const getTechnicians = apiClient.getTechnicians.bind(apiClient);
+export const createUser = apiClient.createUser.bind(apiClient);
+export const updateUser = apiClient.updateUser.bind(apiClient);
+export const deleteUser = apiClient.deleteUser.bind(apiClient);
+export const getCategories = apiClient.getCategories.bind(apiClient);
+export const createCategory = apiClient.createCategory.bind(apiClient);
+export const updateCategory = apiClient.updateCategory.bind(apiClient);
+export const deleteCategory = apiClient.deleteCategory.bind(apiClient);
+export const restoreCategory = apiClient.restoreCategory.bind(apiClient);
+export const getCategoryStats = apiClient.getCategoryStats.bind(apiClient);
+
+export { apiClient };

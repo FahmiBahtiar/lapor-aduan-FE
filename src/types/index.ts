@@ -89,7 +89,9 @@ export interface ComplaintFormData {
 }
 
 export interface VerifyComplaintData {
-  action: 'approve' | 'reject';
+  action?: 'approve' | 'reject';
+  status?: string;
+  notes?: string;
   rejectionReason?: string;
   assignedTo?: string;
 }

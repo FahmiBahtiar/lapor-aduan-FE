@@ -6,11 +6,12 @@ import { useAuth, withAuth } from '@/hooks/useAuth';
 import { apiClient } from '@/lib/api';
 import { Complaint, ComplaintFormData } from '@/types';
 import { toast } from 'react-hot-toast';
+import CategorySelector from '@/components/forms/CategorySelector';
+import { getCategoryName, getCategoryId } from '@/utils/categoryHelper';
 
 interface EditComplaintForm {
   title: string;
   description: string;
-  category: string;
   priority: 'low' | 'medium' | 'high';
   attachment?: FileList;
 }
@@ -23,6 +24,8 @@ const EditComplaint = () => {
   const [submitting, setSubmitting] = useState(false);
   const [complaint, setComplaint] = useState<Complaint | null>(null);
   const [currentAttachment, setCurrentAttachment] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [categoryError, setCategoryError] = useState('');
 
   const {
     register,
@@ -68,8 +71,23 @@ const EditComplaint = () => {
         // Set form values
         setValue('title', complaintData.title);
         setValue('description', complaintData.description);
-        setValue('category', complaintData.category);
         setValue('priority', complaintData.priority);
+        
+        // Set selected category for CategorySelector
+        console.log('Complaint category data:', complaintData.category);
+        const categoryId = getCategoryId(complaintData.category);
+        const categoryName = getCategoryName(complaintData.category);
+        console.log('Category ID extracted:', categoryId);
+        console.log('Category Name extracted:', categoryName);
+        
+        // Jika category adalah string name, gunakan initialCategoryName
+        if (typeof complaintData.category === 'string') {
+          // Category masih berupa string name, biarkan CategorySelector yang handle
+          setSelectedCategory('');
+        } else {
+          // Category sudah berupa object dengan ID
+          setSelectedCategory(categoryId);
+        }
       }
     } catch (error) {
       console.error('Error fetching complaint:', error);
@@ -84,10 +102,17 @@ const EditComplaint = () => {
     try {
       setSubmitting(true);
       
+      // Validate category
+      if (!selectedCategory) {
+        setCategoryError('Kategori wajib dipilih');
+        setSubmitting(false);
+        return;
+      }
+      
       const formData: ComplaintFormData = {
         title: data.title,
         description: data.description,
-        category: data.category,
+        category: selectedCategory,
         priority: data.priority,
         attachment: data.attachment
       };
@@ -187,27 +212,16 @@ const EditComplaint = () => {
             </div>
 
             {/* Category */}
-            <div>
-              <label htmlFor="category" className="block text-sm font-medium text-gray-700">
-                Kategori *
-              </label>
-              <select
-                id="category"
-                {...register('category', { required: 'Kategori harus dipilih' })}
-                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-              >
-                <option value="">Pilih kategori...</option>
-                <option value="Hardware">Hardware</option>
-                <option value="Software">Software</option>
-                <option value="Jaringan">Jaringan</option>
-                <option value="AC/Pendingin">AC/Pendingin</option>
-                <option value="Listrik">Listrik</option>
-                <option value="Lainnya">Lainnya</option>
-              </select>
-              {errors.category && (
-                <p className="mt-2 text-sm text-red-600">{errors.category.message}</p>
-              )}
-            </div>
+            <CategorySelector
+              value={selectedCategory}
+              onChange={(categoryId) => {
+                setSelectedCategory(categoryId);
+                setCategoryError('');
+              }}
+              error={categoryError}
+              required={true}
+              initialCategoryName={typeof complaint?.category === 'string' ? complaint.category : undefined}
+            />
 
             {/* Priority */}
             <div>

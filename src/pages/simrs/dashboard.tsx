@@ -261,7 +261,7 @@ const SimrsDashboard = () => {
                           {complaint.priority === 'high' ? 'Tinggi' : complaint.priority === 'medium' ? 'Sedang' : 'Rendah'}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-600 mb-2">{complaint.category}</p>
+                      <p className="text-xs text-gray-600 mb-2">{typeof complaint.category === 'object' && (complaint.category as any)?.name ? (complaint.category as any).name : complaint.category}</p>
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-gray-500">{formatDate(complaint.createdAt)}</span>
                         <Link
@@ -388,7 +388,7 @@ const SimrsDashboard = () => {
                         </span>
                       </div>
                       <div className="mt-1 flex items-center space-x-3 text-sm text-gray-500">
-                        <span>Kategori: {complaint.category}</span>
+                        <span>Kategori: {typeof complaint.category === 'object' && (complaint.category as any)?.name ? (complaint.category as any).name : complaint.category}</span>
                         <span>•</span>
                         <span>Pelapor: {complaint.createdBy?.ruangan || 'Tidak diketahui'}</span>
                         <span>•</span>

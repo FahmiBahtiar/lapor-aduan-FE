@@ -66,6 +66,12 @@ const Layout = ({ children, title }: LayoutProps) => {
             current: router.pathname.includes('/admin/users'),
           },
           {
+            name: 'Kelola Kategori',
+            href: '/admin/categories',
+            icon: FolderIcon,
+            current: router.pathname.includes('/admin/categories'),
+          },
+          {
             name: 'Statistik',
             href: '/admin/stats',
             icon: ChartPieIcon,

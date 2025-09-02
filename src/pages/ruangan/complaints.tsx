@@ -324,7 +324,9 @@ const RuanganComplaints = () => {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{complaint.category}</div>
+                          <div className="text-sm text-gray-900">
+                            {typeof complaint.category === 'object' && complaint.category && (complaint.category as any).name ? (complaint.category as any).name : complaint.category}
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           {getPriorityBadge(complaint.priority)}

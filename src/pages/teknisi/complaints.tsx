@@ -32,13 +32,16 @@ const TeknisiComplaints = () => {
       const response = await apiClient.getComplaints();
       
       if (response.status === 'success') {
-        // Backend returns { data: { complaints: [], pagination: {} } }
-        const complaintsData = (response.data as any)?.complaints || [];
-        setComplaints(complaintsData);
+        // Handle both possible response structures
+        const complaintsData = (response.data as any)?.complaints || response.data || [];
+        setComplaints(Array.isArray(complaintsData) ? complaintsData : []);
+      } else {
+        setComplaints([]);
       }
     } catch (error) {
       console.error('Error fetching complaints:', error);
       toast.error('Gagal memuat data aduan');
+      setComplaints([]);
     } finally {
       setLoading(false);
     }
@@ -411,7 +414,7 @@ const TeknisiComplaintCard = ({ complaint, onTake, onProcess, onFinish, currentU
             
             <div className="grid grid-cols-2 gap-4 text-sm mb-3">
               <div>
-                <span className="font-medium text-gray-700">Kategori:</span> {complaint.category}
+                <span className="font-medium text-gray-700">Kategori:</span> {typeof complaint.category === 'object' && (complaint.category as any)?.name ? (complaint.category as any).name : complaint.category}
               </div>
               <div>
                 <span className="font-medium text-gray-700">Pelapor:</span> {complaint.createdBy?.ruangan || 'Tidak diketahui'}

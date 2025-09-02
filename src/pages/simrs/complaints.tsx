@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import Layout from '@/components/layout/Layout';
 import { withAuth } from '@/hooks/useAuth';
 import { apiClient } from '@/lib/api';
@@ -30,168 +31,200 @@ const SimrsComplaints = () => {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
-    fetchData();
+    fetchComplaints();
+    fetchTechnicians();
   }, []);
 
-  const fetchData = async () => {
+  const fetchComplaints = async () => {
     try {
       setLoading(true);
+      const response = await apiClient.getComplaints();
       
-      // Fetch complaints and technicians in parallel
-      const [complaintsResponse, techniciansResponse] = await Promise.all([
-        apiClient.getComplaints(),
-        apiClient.getTechnicians()
-      ]);
-      
-      if (complaintsResponse.status === 'success') {
-        // Backend returns { data: { complaints: [], pagination: {} } }
-        const complaintsData = (complaintsResponse.data as any)?.complaints || [];
-        setComplaints(complaintsData);
-      }
-      
-      if (techniciansResponse.status === 'success') {
-        const techniciansData = (techniciansResponse.data as any) || [];
-        setTechnicians(techniciansData);
+      if (response.status === 'success') {
+        // Handle both possible response structures
+        const complaintsData = (response.data as any)?.complaints || response.data || [];
+        setComplaints(Array.isArray(complaintsData) ? complaintsData : []);
+      } else {
+        setComplaints([]);
       }
     } catch (error) {
-      console.error('Error fetching data:', error);
-      toast.error('Gagal memuat data');
+      console.error('Error fetching complaints:', error);
+      toast.error('Gagal memuat data aduan');
+      setComplaints([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleVerifyComplaint = async (complaintId: string, action: 'approve' | 'reject', data: any) => {
+  const fetchTechnicians = async () => {
     try {
-      const response = await apiClient.verifyComplaint(complaintId, { action, ...data });
+      const response = await apiClient.getTechnicians();
       
       if (response.status === 'success') {
-        toast.success(action === 'approve' ? 'Aduan disetujui!' : 'Aduan ditolak');
-        fetchData();
+        // Handle both possible response structures
+        const techniciansData = (response.data as any)?.users || response.data || [];
+        setTechnicians(Array.isArray(techniciansData) ? techniciansData : []);
+      } else {
+        setTechnicians([]);
       }
-    } catch (error: any) {
+    } catch (error) {
+      console.error('Error fetching technicians:', error);
+      setTechnicians([]);
+    }
+  };
+
+  const handleVerifyComplaint = async (complaintId: string, action: 'approve' | 'reject', data: any) => {
+    try {
+      const response = await apiClient.verifyComplaint(complaintId, {
+        action,
+        assignedTo: data.assignedTo,
+        rejectionReason: data.rejectionReason
+      });
+
+      if (response.status === 'success') {
+        toast.success(action === 'approve' ? 'Aduan berhasil disetujui' : 'Aduan berhasil ditolak');
+        fetchComplaints();
+      }
+    } catch (error) {
       console.error('Error verifying complaint:', error);
-      toast.error(error?.message || `Gagal ${action === 'approve' ? 'menyetujui' : 'menolak'} aduan`);
+      toast.error('Gagal memverifikasi aduan');
     }
   };
 
   const handleRejectClick = (complaintId: string) => {
     setSelectedComplaintForReject(complaintId);
-    setRejectionReason('');
     setShowRejectModal(true);
   };
 
-  const handleRejectConfirm = async () => {
-    if (!selectedComplaintForReject) return;
-    
+  const submitReject = async () => {
     if (!rejectionReason.trim()) {
-      toast.error('Alasan penolakan wajib diisi');
+      toast.error('Alasan penolakan harus diisi');
       return;
     }
 
-    try {
+    if (selectedComplaintForReject) {
       setRejectLoading(true);
-      await handleVerifyComplaint(selectedComplaintForReject, 'reject', {
-        rejectionReason: rejectionReason.trim()
-      });
-      
-      setShowRejectModal(false);
-      setSelectedComplaintForReject(null);
-      setRejectionReason('');
-    } catch (error) {
-      // Error sudah dihandle di handleVerifyComplaint
-    } finally {
-      setRejectLoading(false);
+      try {
+        await handleVerifyComplaint(selectedComplaintForReject, 'reject', {
+          rejectionReason: rejectionReason.trim()
+        });
+        setShowRejectModal(false);
+        setSelectedComplaintForReject(null);
+        setRejectionReason('');
+      } catch (error) {
+        console.error('Error rejecting complaint:', error);
+      } finally {
+        setRejectLoading(false);
+      }
     }
   };
 
-  const handleRejectCancel = () => {
-    setShowRejectModal(false);
-    setSelectedComplaintForReject(null);
-    setRejectionReason('');
-  };
-
-  // Filter and sort complaints
-  const filteredAndSortedComplaints = complaints
+  // Filter dan sort complaints
+  const safeComplaints = Array.isArray(complaints) ? complaints : [];
+  const filteredAndSortedComplaints = safeComplaints
     .filter(complaint => {
       const matchesStatus = !filters.status || complaint.status === filters.status;
       const matchesPriority = !filters.priority || complaint.priority === filters.priority;
-      const matchesCategory = !filters.category || complaint.category.toLowerCase().includes(filters.category.toLowerCase());
+      const matchesCategory = !filters.category || 
+        (typeof complaint.category === 'string' ? 
+          complaint.category.toLowerCase().includes(filters.category.toLowerCase()) :
+          (complaint.category as any)?.name?.toLowerCase().includes(filters.category.toLowerCase())
+        );
       const matchesSearch = !filters.search || 
         complaint.title.toLowerCase().includes(filters.search.toLowerCase()) ||
-        complaint.description.toLowerCase().includes(filters.search.toLowerCase()) ||
-        complaint.createdBy?.ruangan?.toLowerCase().includes(filters.search.toLowerCase());
-      
+        complaint.description.toLowerCase().includes(filters.search.toLowerCase());
+
       return matchesStatus && matchesPriority && matchesCategory && matchesSearch;
     })
     .sort((a, b) => {
-      if (sortBy === 'priority') {
+      let comparison = 0;
+      
+      if (sortBy === 'createdAt') {
+        comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      } else if (sortBy === 'priority') {
         const priorityOrder = { 'high': 3, 'medium': 2, 'low': 1 };
-        const priorityA = priorityOrder[a.priority as keyof typeof priorityOrder];
-        const priorityB = priorityOrder[b.priority as keyof typeof priorityOrder];
-        return sortOrder === 'asc' ? priorityA - priorityB : priorityB - priorityA;
-      } else {
-        const dateA = new Date(a[sortBy]).getTime();
-        const dateB = new Date(b[sortBy]).getTime();
-        return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+        comparison = priorityOrder[a.priority] - priorityOrder[b.priority];
       }
+
+      return sortOrder === 'desc' ? -comparison : comparison;
     });
+
+  const getStatsCards = () => {
+    const safeComplaints = Array.isArray(complaints) ? complaints : [];
+    const total = safeComplaints.length;
+    const pending = safeComplaints.filter(c => c.status === 'Menunggu Verifikasi').length;
+    const approved = safeComplaints.filter(c => c.status === 'Diterima SIM RS').length;
+    const rejected = safeComplaints.filter(c => c.status === 'Ditolak SIM RS').length;
+
+    return [
+      { title: 'Total Aduan', count: total, color: 'bg-blue-500', icon: '📋' },
+      { title: 'Menunggu Verifikasi', count: pending, color: 'bg-yellow-500', icon: '⏳' },
+      { title: 'Disetujui', count: approved, color: 'bg-green-500', icon: '✅' },
+      { title: 'Ditolak', count: rejected, color: 'bg-red-500', icon: '❌' }
+    ];
+  };
 
   if (loading) {
     return (
-      <Layout title="Verifikasi Aduan">
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-600"></div>
+      <Layout>
+        <div className="min-h-screen bg-gray-50 p-6">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="h-24 bg-gray-200 rounded-lg"></div>
+              ))}
+            </div>
+            <div className="space-y-4">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="h-32 bg-gray-200 rounded-lg"></div>
+              ))}
+            </div>
+          </div>
         </div>
       </Layout>
     );
   }
 
-  // Stats for high priority complaints
-  const pendingComplaints = filteredAndSortedComplaints.filter(c => c.status === 'Menunggu Verifikasi');
-  const highPriorityCount = pendingComplaints.filter(c => c.priority === 'high').length;
-
   return (
-    <Layout title="Verifikasi Aduan">
-      <div className="space-y-6">
-        {/* Header with stats */}
-        <div className="bg-white shadow rounded-lg p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Verifikasi Aduan</h1>
-              <p className="text-gray-600">Kelola dan verifikasi aduan yang masuk</p>
-            </div>
-            <div className="flex space-x-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">{pendingComplaints.length}</div>
-                <div className="text-sm text-gray-500">Menunggu</div>
-              </div>
-              {highPriorityCount > 0 && (
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-red-600 flex items-center">
-                    <FireIcon className="w-6 h-6 mr-1" />
-                    {highPriorityCount}
-                  </div>
-                  <div className="text-sm text-red-500">Prioritas Tinggi</div>
+    <Layout>
+      <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Verifikasi Aduan</h1>
+          <p className="text-sm sm:text-base text-gray-600">Kelola dan verifikasi aduan yang masuk untuk diproses lebih lanjut</p>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+          {getStatsCards().map((card, index) => (
+            <div key={index} className="bg-white rounded-lg shadow p-4 sm:p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">{card.title}</p>
+                  <p className="text-xl sm:text-2xl font-bold text-gray-900">{card.count}</p>
                 </div>
-              )}
+                <div className={`p-2 sm:p-3 rounded-full ${card.color} text-white`}>
+                  <span className="text-lg sm:text-xl">{card.icon}</span>
+                </div>
+              </div>
             </div>
-          </div>
+          ))}
         </div>
 
         {/* Filters */}
-        <div className="bg-white shadow rounded-lg p-6">
+        <div className="bg-white shadow rounded-lg p-4 sm:p-6 mb-8">
           <div className="flex items-center space-x-4 mb-4">
             <FunnelIcon className="w-5 h-5 text-gray-400" />
             <h3 className="text-lg font-medium text-gray-900">Filter & Pencarian</h3>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
               <select
                 value={filters.status}
                 onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value as ComplaintStatus | '' }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               >
                 <option value="">Semua Status</option>
                 <option value="Menunggu Verifikasi">Menunggu Verifikasi</option>
@@ -204,7 +237,7 @@ const SimrsComplaints = () => {
               <select
                 value={filters.priority}
                 onChange={(e) => setFilters(prev => ({ ...prev, priority: e.target.value as ComplaintPriority | '' }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               >
                 <option value="">Semua Prioritas</option>
                 <option value="high">Tinggi</option>
@@ -219,7 +252,7 @@ const SimrsComplaints = () => {
                 value={filters.category}
                 onChange={(e) => setFilters(prev => ({ ...prev, category: e.target.value }))}
                 placeholder="Cari kategori..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               />
             </div>
             <div>
@@ -230,43 +263,45 @@ const SimrsComplaints = () => {
                   type="text"
                   value={filters.search}
                   onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-                  placeholder="Cari aduan..."
-                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Cari judul atau deskripsi..."
+                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 />
               </div>
             </div>
           </div>
-          
-          {/* Sort options */}
-          <div className="flex items-center space-x-4 mt-4 pt-4 border-t">
-            <span className="text-sm font-medium text-gray-700">Urutkan:</span>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as 'createdAt' | 'priority')}
-              className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="createdAt">Tanggal</option>
-              <option value="priority">Prioritas</option>
-            </select>
-            <select
-              value={sortOrder}
-              onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
-              className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="desc">Terbaru</option>
-              <option value="asc">Terlama</option>
-            </select>
+
+          {/* Sort Options */}
+          <div className="mt-4 flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
+            <label className="text-sm font-medium text-gray-700">Urutkan:</label>
+            <div className="flex space-x-2">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as 'createdAt' | 'priority')}
+                className="px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="createdAt">Tanggal</option>
+                <option value="priority">Prioritas</option>
+              </select>
+              <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
+                className="px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="desc">Terbaru</option>
+                <option value="asc">Terlama</option>
+              </select>
+            </div>
           </div>
         </div>
 
         {/* Complaints List */}
-        <div className="space-y-4">
+        <div className="space-y-6">
           {filteredAndSortedComplaints.length === 0 ? (
             <div className="text-center py-12 bg-white rounded-lg shadow">
-              <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">Tidak ada aduan</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                Tidak ada aduan yang sesuai dengan filter yang dipilih.
+              <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Tidak ada aduan</h3>
+              <p className="text-gray-500">
+                {Array.isArray(complaints) && complaints.length === 0 ? 'Belum ada aduan yang masuk.' : 'Tidak ada aduan yang sesuai dengan filter.'}
               </p>
             </div>
           ) : (
@@ -312,58 +347,40 @@ const SimrsComplaints = () => {
 
         {/* Reject Modal */}
         {showRejectModal && (
-          <div className="fixed inset-0 z-50 overflow-y-auto">
-            <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-              <div className="fixed inset-0 transition-opacity" aria-hidden="true">
-                <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-50 p-4">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Tolak Aduan</h3>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Alasan Penolakan
+                </label>
+                <textarea
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  rows={4}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                  placeholder="Berikan alasan penolakan..."
+                />
               </div>
-
-              <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-
-              <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-                <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                  <div className="sm:flex sm:items-start">
-                    <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
-                      <ExclamationTriangleIcon className="h-6 w-6 text-red-600" aria-hidden="true" />
-                    </div>
-                    <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left flex-1">
-                      <h3 className="text-lg leading-6 font-medium text-gray-900">
-                        Tolak Aduan
-                      </h3>
-                      <div className="mt-2">
-                        <p className="text-sm text-gray-500 mb-4">
-                          Berikan alasan mengapa aduan ini ditolak. Alasan ini akan dikirimkan kepada pelapor.
-                        </p>
-                        <textarea
-                          value={rejectionReason}
-                          onChange={(e) => setRejectionReason(e.target.value)}
-                          placeholder="Masukkan alasan penolakan..."
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
-                          rows={4}
-                          disabled={rejectLoading}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                  <button
-                    type="button"
-                    disabled={rejectLoading || !rejectionReason.trim()}
-                    onClick={handleRejectConfirm}
-                    className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {rejectLoading ? 'Menolak...' : 'Tolak Aduan'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={rejectLoading}
-                    onClick={handleRejectCancel}
-                    className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Batal
-                  </button>
-                </div>
+              <div className="flex space-x-3">
+                <button
+                  onClick={submitReject}
+                  disabled={rejectLoading || !rejectionReason.trim()}
+                  className="flex-1 bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 disabled:opacity-50 transition-colors"
+                >
+                  {rejectLoading ? 'Memproses...' : 'Tolak'}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowRejectModal(false);
+                    setSelectedComplaintForReject(null);
+                    setRejectionReason('');
+                  }}
+                  disabled={rejectLoading}
+                  className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-400 transition-colors"
+                >
+                  Batal
+                </button>
               </div>
             </div>
           </div>
@@ -435,46 +452,52 @@ const ComplaintCard = ({ complaint, technicians, onVerify, onReject, onImageClic
     <div className={`bg-white shadow rounded-lg ${
       complaint.priority === 'high' ? 'border-l-4 border-red-500' : ''
     }`}>
-      <div className="px-6 py-4">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="flex items-center space-x-3 mb-2">
+      <div className="p-4 sm:p-6">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between space-y-4 lg:space-y-0">
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2 mb-3">
               {complaint.priority === 'high' && (
-                <FireIcon className="w-5 h-5 text-red-500" />
+                <FireIcon className="w-5 h-5 text-red-500 flex-shrink-0" />
               )}
-              <h3 className="text-lg font-medium text-gray-900">
+              <h3 className="text-lg font-medium text-gray-900 truncate">
                 {complaint.title}
               </h3>
-              {getStatusBadge(complaint.status)}
-              {getPriorityBadge(complaint.priority)}
+              <div className="flex flex-wrap gap-2">
+                {getStatusBadge(complaint.status)}
+                {getPriorityBadge(complaint.priority)}
+              </div>
             </div>
             
-            <p className="text-sm text-gray-600 mb-3">
+            <p className="text-sm text-gray-600 mb-4 line-clamp-3">
               {complaint.description}
             </p>
             
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div>
-                <span className="font-medium text-gray-700">Kategori:</span> {complaint.category}
+                <span className="font-medium text-gray-700">Kategori:</span> 
+                <span className="ml-1">{typeof complaint.category === 'object' && (complaint.category as any)?.name ? (complaint.category as any).name : complaint.category}</span>
               </div>
               <div>
-                <span className="font-medium text-gray-700">Pelapor:</span> {complaint.createdBy?.ruangan || 'Tidak diketahui'}
+                <span className="font-medium text-gray-700">Pelapor:</span> 
+                <span className="ml-1">{complaint.createdBy?.ruangan || 'Tidak diketahui'}</span>
               </div>
               <div>
-                <span className="font-medium text-gray-700">Tanggal:</span> {new Date(complaint.createdAt).toLocaleDateString('id-ID')}
+                <span className="font-medium text-gray-700">Tanggal:</span> 
+                <span className="ml-1">{new Date(complaint.createdAt).toLocaleDateString('id-ID')}</span>
               </div>
               {complaint.assignedTo && (
                 <div>
-                  <span className="font-medium text-gray-700">Teknisi:</span> {complaint.assignedTo?.ruangan || 'Tidak diketahui'}
+                  <span className="font-medium text-gray-700">Teknisi:</span> 
+                  <span className="ml-1">{complaint.assignedTo?.ruangan || 'Tidak diketahui'}</span>
                 </div>
               )}
             </div>
 
             {complaint.attachment && (
-              <div className="mt-3">
+              <div className="mt-4">
                 <button
                   onClick={() => onImageClick(complaint.attachment!, complaint.title)}
-                  className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
+                  className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800 transition-colors"
                 >
                   <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clipRule="evenodd" />
@@ -485,42 +508,72 @@ const ComplaintCard = ({ complaint, technicians, onVerify, onReject, onImageClic
             )}
           </div>
 
-          {/* Actions for pending complaints */}
-          {complaint.status === 'Menunggu Verifikasi' && (
-            <div className="flex-shrink-0">
-              {!showActions ? (
-                <button
-                  onClick={() => setShowActions(true)}
-                  className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                  Verifikasi
-                </button>
-              ) : (
-                <div className="space-y-2">
-                  <div className="flex space-x-2">
+          {/* Actions */}
+          <div className="flex-shrink-0 lg:ml-6">
+            <div className="flex flex-col space-y-3 w-full lg:w-auto">
+              <Link
+                href={`/simrs/complaints/${complaint._id}`}
+                className="inline-flex items-center justify-center px-4 py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white text-sm font-medium rounded-lg shadow-md hover:shadow-lg transform hover:scale-105 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 whitespace-nowrap"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                Lihat Detail
+              </Link>
+              
+              {complaint.status === 'Menunggu Verifikasi' && (
+                <>
+                  {!showActions ? (
                     <button
-                      onClick={handleApprove}
-                      className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                      onClick={() => setShowActions(true)}
+                      className="inline-flex items-center justify-center px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-sm font-medium rounded-lg shadow-md hover:shadow-lg transform hover:scale-105 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 whitespace-nowrap"
                     >
-                      Setujui
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Verifikasi Aduan
                     </button>
-                    <button
-                      onClick={handleRejectClick}
-                      className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                    >
-                      Tolak
-                    </button>
-                    <button
-                      onClick={() => setShowActions(false)}
-                      className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                    >
-                      Batal
-                    </button>
-                  </div>
-                </div>
+                  ) : (
+                    <div className="w-full lg:w-64">
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <p className="text-sm text-blue-800 font-medium mb-3">Pilih aksi verifikasi:</p>
+                        <div className="space-y-2">
+                          <button
+                            onClick={handleApprove}
+                            className="w-full inline-flex items-center justify-center px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white text-sm font-medium rounded-lg shadow-md hover:shadow-lg transform hover:scale-105 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+                          >
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            Setujui Aduan
+                          </button>
+                          <button
+                            onClick={handleRejectClick}
+                            className="w-full inline-flex items-center justify-center px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white text-sm font-medium rounded-lg shadow-md hover:shadow-lg transform hover:scale-105 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                          >
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            Tolak Aduan
+                          </button>
+                          <button
+                            onClick={() => setShowActions(false)}
+                            className="w-full inline-flex items-center justify-center px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg shadow-sm hover:shadow-md transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
+                          >
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                            </svg>
+                            Batal
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

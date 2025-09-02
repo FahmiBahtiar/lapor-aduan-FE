@@ -8,11 +8,13 @@ import Link from 'next/link';
 
 const AdminStats = () => {
   const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [dashboardStats, setDashboardStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState('all');
 
   useEffect(() => {
     fetchComplaints();
+    fetchDashboardStats();
   }, []);
 
   const fetchComplaints = async () => {
@@ -29,6 +31,17 @@ const AdminStats = () => {
       toast.error('Gagal memuat data statistik');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDashboardStats = async () => {
+    try {
+      const response = await apiClient.getDashboardStats();
+      if (response.status === 'success') {
+        setDashboardStats(response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
     }
   };
 
@@ -82,8 +95,23 @@ const AdminStats = () => {
   };
 
   // Calculate category statistics
+  // Use dashboard stats for category data if available (already has category names)
+  if (dashboardStats?.charts?.complaintsByCategory) {
+    dashboardStats.charts.complaintsByCategory.forEach((item: any) => {
+      stats.byCategory[item._id] = item.count;
+    });
+  } else {
+    // Fallback: Calculate from individual complaints
+    filteredComplaints.forEach(complaint => {
+      const categoryKey = typeof complaint.category === 'object' && (complaint.category as any)?.name 
+        ? (complaint.category as any).name 
+        : complaint.category;
+      stats.byCategory[categoryKey] = (stats.byCategory[categoryKey] || 0) + 1;
+    });
+  }
+
+  // Calculate room statistics
   filteredComplaints.forEach(complaint => {
-    stats.byCategory[complaint.category] = (stats.byCategory[complaint.category] || 0) + 1;
     const room = complaint.createdBy?.ruangan || 'Tidak diketahui';
     stats.byRoom[room] = (stats.byRoom[room] || 0) + 1;
   });
@@ -320,7 +348,9 @@ const AdminStats = () => {
                     const percentage = stats.total > 0 ? (count / stats.total) * 100 : 0;
                     return (
                       <div key={category} className="flex justify-between items-center">
-                        <span className="text-sm font-medium text-gray-700 truncate">{category}</span>
+                        <span className="text-sm font-medium text-gray-700 truncate">
+                          {category}
+                        </span>
                         <div className="flex items-center space-x-2">
                           <span className="text-sm text-gray-500">{count}</span>
                           <div className="w-16 bg-gray-200 rounded-full h-2">

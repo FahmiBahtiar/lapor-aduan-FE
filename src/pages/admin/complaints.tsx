@@ -346,7 +346,7 @@ const AdminComplaints = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {complaint.category}
+                      {typeof complaint.category === 'object' && complaint.category && (complaint.category as any).name ? (complaint.category as any).name : complaint.category}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {formatDate(complaint.createdAt)}

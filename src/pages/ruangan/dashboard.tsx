@@ -5,6 +5,7 @@ import { useAuth, withAuth } from '@/hooks/useAuth';
 import { apiClient } from '@/lib/api';
 import { Complaint } from '@/types';
 import { toast } from 'react-hot-toast';
+import { getCategoryName } from '@/utils/categoryHelper';
 
 const RuanganDashboard = () => {
   const [complaints, setComplaints] = useState<Complaint[]>([]);
@@ -231,7 +232,7 @@ const RuanganDashboard = () => {
                                 {complaint.title}
                               </p>
                               <p className="text-sm text-gray-500">
-                                {complaint.category}
+                                {getCategoryName(complaint.category)}
                               </p>
                             </div>
                             <div className="text-right text-sm whitespace-nowrap">
