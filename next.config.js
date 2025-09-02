@@ -6,7 +6,7 @@ const nextConfig = {
     domains: ['res.cloudinary.com', 'cloudinary.com'], // Untuk image dari Cloudinary
   },
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000',
   },
   eslint: {
     ignoreDuringBuilds: false,
