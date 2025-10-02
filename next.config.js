@@ -14,9 +14,9 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
-  // Optional: jika perlu proxy API calls
+  // Optional: proxy API calls
   async rewrites() {
-    return []
+    return [];
   },
   // Headers untuk security
   async headers() {
@@ -38,8 +38,18 @@ const nextConfig = {
           },
         ],
       },
-    ]
+    ];
   },
-}
+  // Hot reload polling untuk Docker/Linux
+  webpack: (config, { dev, isServer }) => {
+    if (dev && !isServer) {
+      config.watchOptions = {
+        poll: 1000,
+        aggregateTimeout: 300,
+      };
+    }
+    return config;
+  },
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;
